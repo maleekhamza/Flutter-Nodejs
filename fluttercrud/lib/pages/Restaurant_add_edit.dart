@@ -1,0 +1,287 @@
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+
+import 'package:image_picker/image_picker.dart';
+import 'package:snippet_coder_utils/FormHelper.dart';
+import 'package:snippet_coder_utils/ProgressHUD.dart';
+import 'package:snippet_coder_utils/hex_color.dart';
+
+import '../config.dart';
+import '../model/restaurant_model.dart';
+import '../services/api_service.dart';
+
+class RestaurantAddEdit extends StatefulWidget {
+  const RestaurantAddEdit({Key? key}) : super(key: key);
+
+  @override
+  _RestaurantAddEditState createState() => _RestaurantAddEditState();
+}
+
+class _RestaurantAddEditState extends State<RestaurantAddEdit> {
+  RestaurantModel? restaurantModel;
+  static final GlobalKey<FormState> globalFormKey = GlobalKey<FormState>();
+  bool isApiCallProcess = false;
+  List<Object> images = [];
+  bool isEditMode = false;
+  bool isImageSelected = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Add Or Edit '),
+          elevation: 0,
+        ),
+        backgroundColor: Colors.grey[200],
+        body: ProgressHUD(
+          child: Form(
+            key: globalFormKey,
+            child: restaurantForm(),
+          ),
+          inAsyncCall: isApiCallProcess,
+          opacity: 0.3,
+          key: UniqueKey(),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    restaurantModel = RestaurantModel();
+
+    Future.delayed(Duration.zero, () {
+      if (ModalRoute.of(context)?.settings.arguments != null) {
+        final Map arguments = ModalRoute.of(context)?.settings.arguments as Map;
+        restaurantModel = arguments['model'];
+        isEditMode = true;
+        setState(() {});
+      }
+    });
+  }
+
+  Widget restaurantForm() {
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.only(
+              bottom: 10,
+              top: 10,
+            ),
+            child: FormHelper.inputFieldWidget(
+              context,
+              "RestaurantName",
+              "Restaurant Name",
+                  (onValidateVal) {
+                if (onValidateVal.isEmpty) {
+                  return 'Restaurant Name can\'t be empty.';
+                }
+
+                return null;
+              },
+                  (onSavedVal) => {
+                restaurantModel!.restaurantName = onSavedVal,
+              },
+              initialValue: restaurantModel!.restaurantName ?? "",
+              obscureText: false,
+              borderFocusColor: Colors.black,
+              borderColor: Colors.black,
+              textColor: Colors.black,
+              hintColor: Colors.black.withOpacity(0.7),
+              borderRadius: 10,
+              showPrefixIcon: false,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(
+              bottom: 10,
+              top: 10,
+            ),
+            child: FormHelper.inputFieldWidget(
+              context,
+
+              "RestaurantPrice",
+              "Restaurant Price",
+                  (onValidateVal) {
+                if (onValidateVal.isEmpty) {
+                  return 'Restaurant Price can\'t be empty.';
+                }
+
+                return null;
+              },
+                  (onSavedVal) => {
+                restaurantModel!.restaurantPrice = int.parse(onSavedVal),
+              },
+              initialValue: restaurantModel!.restaurantPrice == null
+                  ? ""
+                  : restaurantModel!.restaurantPrice.toString(),
+              obscureText: false,
+              borderFocusColor: Colors.black,
+              borderColor: Colors.black,
+              textColor: Colors.black,
+              hintColor: Colors.black.withOpacity(0.7),
+              borderRadius: 10,
+              showPrefixIcon: false,
+              suffixIcon: const Icon(Icons.monetization_on),
+            ),
+          ),
+          picPicker(
+            isImageSelected,
+            restaurantModel!.restaurantImage ?? "",
+                (file) => {
+              setState(
+                    () {
+                  restaurantModel!.restaurantImage = file.path;
+                  isImageSelected = true;
+                },
+              )
+            },
+          ),
+          const SizedBox(
+            height: 20,
+          ),
+          Center(
+            child: FormHelper.submitButton(
+              "Save",
+                  () {
+                if (validateAndSave()) {
+                  print(restaurantModel!.toJson());
+
+                  setState(() {
+                    isApiCallProcess = true;
+                  });
+
+                  APIService.saveRestaurant(
+                    restaurantModel!,
+                    isEditMode,
+                    isImageSelected,
+                  ).then(
+                        (response) {
+                      setState(() {
+                        isApiCallProcess = false;
+                      });
+
+                      if (response) {
+                        Navigator.pushNamedAndRemoveUntil(
+                          context,
+                          '/',
+                              (route) => false,
+                        );
+                      } else {
+                        FormHelper.showSimpleAlertDialog(
+                          context,
+                          Config.appName,
+                          "Error occur",
+                          "OK",
+                              () {
+                            Navigator.of(context).pop();
+                          },
+                        );
+                      }
+                    },
+                  );
+                }
+              },
+              btnColor: HexColor("283B71"),
+              borderColor: Colors.white,
+              txtColor: Colors.white,
+              borderRadius: 10,
+            ),
+          ),
+          const SizedBox(
+            height: 20,
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool validateAndSave() {
+    final form = globalFormKey.currentState;
+    if (form!.validate()) {
+      form.save();
+      return true;
+    }
+    return false;
+  }
+
+  static Widget picPicker(
+      bool isImageSelected,
+      String fileName,
+      Function onFilePicked,
+      ) {
+    Future<XFile?> _imageFile;
+    ImagePicker _picker = ImagePicker();
+
+    return Column(
+      children: [
+        fileName.isNotEmpty
+            ? isImageSelected
+            ? Image.file(
+          File(fileName),
+          width: 300,
+          height: 300,
+        )
+            : SizedBox(
+          child: Image.network(
+            fileName,
+            width: 200,
+            height: 200,
+            fit: BoxFit.scaleDown,
+          ),
+        )
+            : SizedBox(
+          child: Image.network(
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/6/65/No-Image-Placeholder.svg/1665px-No-Image-Placeholder.svg.png",
+            width: 200,
+            height: 200,
+            fit: BoxFit.scaleDown,
+          ),
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              height: 35.0,
+              width: 35.0,
+              child: IconButton(
+                padding: const EdgeInsets.all(0),
+                icon: const Icon(Icons.image, size: 35.0),
+                onPressed: () {
+                  _imageFile = _picker.pickImage(source: ImageSource.gallery);
+                  _imageFile.then((file) async {
+                    onFilePicked(file);
+                  });
+                },
+              ),
+            ),
+            SizedBox(
+              height: 35.0,
+              width: 35.0,
+              child: IconButton(
+                padding: const EdgeInsets.fromLTRB(10, 0, 0, 0),
+                icon: const Icon(Icons.camera, size: 35.0),
+                onPressed: () {
+                  _imageFile = _picker.pickImage(source: ImageSource.camera);
+                  _imageFile.then((file) async {
+                    onFilePicked(file);
+                  });
+                },
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  isValidURL(url) {
+    return Uri.tryParse(url)?.hasAbsolutePath ?? false;
+  }
+}
